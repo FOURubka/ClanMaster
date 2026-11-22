@@ -9,6 +9,10 @@ import com.google.gson.reflect.TypeToken;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.lang.reflect.Type;
 import java.util.Collections;
 import java.util.Map;
@@ -44,18 +48,27 @@ public class JsonClanStorage implements ClanStorage {
             Map<String, Clan> data = gson.fromJson(reader, mapType);
             return data == null ? Collections.emptyMap() : data;
         } catch (Exception ex) {
-            logger.warning("Failed to load clans.json: " + ex.getMessage());
+            logger.severe("Failed to load clans.json: " + ex.getMessage());
+            try {
+                // The next save replaces the file, keep the unreadable one for recovery
+                Files.copy(file.toPath(), file.toPath().resolveSibling("clans.json.broken-" + System.currentTimeMillis()));
+            } catch (IOException copyError) {
+                logger.severe("Failed to back up clans.json: " + copyError.getMessage());
+            }
             return Collections.emptyMap();
         }
     }
 
     @Override
-    public void saveAll(Map<String, Clan> clans) {
+    public synchronized void saveAll(Map<String, Clan> clans) {
         try {
             file.getParentFile().mkdirs();
-            try (FileWriter writer = new FileWriter(file)) {
+            Path temp = file.toPath().resolveSibling(file.getName() + ".tmp");
+            try (FileWriter writer = new FileWriter(temp.toFile())) {
                 gson.toJson(clans, mapType, writer);
             }
+            // Only replace the real file once serialization has fully succeeded
+            Files.move(temp, file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (Exception ex) {
             logger.warning("Failed to save clans.json: " + ex.getMessage());
         }

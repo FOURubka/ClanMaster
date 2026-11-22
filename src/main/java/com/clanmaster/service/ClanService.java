@@ -11,6 +11,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -20,6 +22,8 @@ import com.clanmaster.util.Text;
  * Central service keeping clan state and enforcing rules.
  */
 public class ClanService {
+
+    private static final double MAX_BANK = 1_000_000_000_000D; // far below where doubles lose cents
 
     private final ClanMasterPlugin plugin;
     private final ClanStorage storage;
@@ -386,11 +390,19 @@ public class ClanService {
 
     public boolean pointsDeposit(UUID actor, double amount, Economy eco) {
         Clan clan = getClanOrNull(actor);
-        if (clan == null || !Double.isFinite(amount) || amount <= 0) return false;
-        if (eco != null && !eco.has(Bukkit.getOfflinePlayer(actor), amount)) return false;
-        if (eco != null && !eco.withdrawPlayer(Bukkit.getOfflinePlayer(actor), amount).transactionSuccess()) return false;
-        clan.setPoints(clan.getPoints() + amount);
-        clan.getPlayerPoints().merge(actor, amount, Double::sum);
+        // Without an economy points would be free, and withdrawable as money once Vault is installed
+        if (clan == null || eco == null || !Double.isFinite(amount)) return false;
+
+        double value = toEconomyPrecision(amount, eco);
+        double balance = clan.getPoints();
+        double updated = balance + value;
+        if (value <= 0 || !Double.isFinite(updated) || updated > MAX_BANK || updated <= balance) return false;
+
+        OfflinePlayer player = Bukkit.getOfflinePlayer(actor);
+        if (!eco.has(player, value) || !eco.withdrawPlayer(player, value).transactionSuccess()) return false;
+
+        clan.setPoints(updated);
+        clan.getPlayerPoints().merge(actor, value, Double::sum);
         saveAsync();
         return true;
     }
@@ -404,13 +416,26 @@ public class ClanService {
 
     public boolean pointsWithdraw(UUID actor, double amount, Economy eco) {
         Clan clan = getClanOrNull(actor);
-        if (!canWithdraw(actor)) return false;
-        // isFinite on the balance: banks already poisoned with NaN must not pay out
-        if (clan == null || !Double.isFinite(amount) || amount <= 0 || !Double.isFinite(clan.getPoints()) || clan.getPoints() < amount) return false;
-        clan.setPoints(clan.getPoints() - amount);
-        if (eco != null) eco.depositPlayer(Bukkit.getOfflinePlayer(actor), amount);
+        if (clan == null || eco == null || !canWithdraw(actor) || !Double.isFinite(amount)) return false;
+
+        double value = toEconomyPrecision(amount, eco);
+        double balance = clan.getPoints();
+        double updated = balance - value;
+        // updated < balance: huge balances don't change when a small amount is subtracted
+        if (value <= 0 || !Double.isFinite(balance) || balance < value || updated >= balance) return false;
+
+        if (!eco.depositPlayer(Bukkit.getOfflinePlayer(actor), value).transactionSuccess()) return false;
+
+        clan.setPoints(updated);
         saveAsync();
         return true;
+    }
+
+    /** Rounds down to what the economy can store, so both sides move the same amount. */
+    private double toEconomyPrecision(double amount, Economy eco) {
+        int digits = eco.fractionalDigits();
+        int scale = digits < 0 ? 2 : Math.min(digits, 2);
+        return BigDecimal.valueOf(amount).setScale(scale, RoundingMode.DOWN).doubleValue();
     }
 
     public boolean allyAdd(UUID actor, String ally) {

@@ -77,6 +77,7 @@ public class ClanAdminCommand implements CommandExecutor {
                 }
                 try {
                     double xp = Double.parseDouble(args[2]);
+                    if (!Double.isFinite(xp) || Math.abs(xp) > 1e12) throw new NumberFormatException();
                     clanService.addXp(args[1], xp);
                     sender.sendMessage(Text.color("&aGave " + xp + " XP to " + args[1]));
                 } catch (NumberFormatException ex) {
