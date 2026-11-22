@@ -91,7 +91,7 @@ Perfect for PvP servers, factions, and any server that wants a deep clan system 
 /clan ally <add/remove>    - Manage allies
 /clan enemy <add/remove>   - Manage enemies
 /clan deposit <amount>     - Deposit points to bank
-/clan withdraw <amount>    - Withdraw points from bank
+/clan withdraw <amount>    - Withdraw points from bank (leader and officers)
 ```
 
 ### Admin Commands

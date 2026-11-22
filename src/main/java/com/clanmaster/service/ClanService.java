@@ -386,18 +386,27 @@ public class ClanService {
 
     public boolean pointsDeposit(UUID actor, double amount, Economy eco) {
         Clan clan = getClanOrNull(actor);
-        if (clan == null || amount <= 0) return false;
+        if (clan == null || !Double.isFinite(amount) || amount <= 0) return false;
         if (eco != null && !eco.has(Bukkit.getOfflinePlayer(actor), amount)) return false;
-        if (eco != null) eco.withdrawPlayer(Bukkit.getOfflinePlayer(actor), amount);
+        if (eco != null && !eco.withdrawPlayer(Bukkit.getOfflinePlayer(actor), amount).transactionSuccess()) return false;
         clan.setPoints(clan.getPoints() + amount);
         clan.getPlayerPoints().merge(actor, amount, Double::sum);
         saveAsync();
         return true;
     }
 
+    public boolean canWithdraw(UUID actor) {
+        Clan clan = getClanOrNull(actor);
+        if (clan == null) return false;
+        ClanMember member = clan.getMembers().get(actor);
+        return member != null && member.getRank() != ClanRank.MEMBER;
+    }
+
     public boolean pointsWithdraw(UUID actor, double amount, Economy eco) {
         Clan clan = getClanOrNull(actor);
-        if (clan == null || amount <= 0 || clan.getPoints() < amount) return false;
+        if (!canWithdraw(actor)) return false;
+        // isFinite on the balance: banks already poisoned with NaN must not pay out
+        if (clan == null || !Double.isFinite(amount) || amount <= 0 || !Double.isFinite(clan.getPoints()) || clan.getPoints() < amount) return false;
         clan.setPoints(clan.getPoints() - amount);
         if (eco != null) eco.depositPlayer(Bukkit.getOfflinePlayer(actor), amount);
         saveAsync();

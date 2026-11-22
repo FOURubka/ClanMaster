@@ -201,14 +201,20 @@ public class ClanCommand implements CommandExecutor, TabCompleter {
         }
         String name = args[1];
         double price = player.getServer().getPluginManager().getPlugin("ClanMaster").getConfig().getDouble("costs.create", 0);
+        boolean charged = false;
         if (economy != null && !player.hasPermission("clan.create.free")) {
             if (!economy.has(player, price)) {
                 player.sendMessage(Text.color(messages.get("error.no-money")));
                 return;
             }
-            economy.withdrawPlayer(player, price);
+            if (!economy.withdrawPlayer(player, price).transactionSuccess()) {
+                player.sendMessage(Text.color(messages.get("error.no-money")));
+                return;
+            }
+            charged = true;
         }
         boolean ok = clanService.createClan(name, player.getUniqueId());
+        if (!ok && charged) economy.depositPlayer(player, price);
         if (ok) {
             player.sendMessage(Text.color(messages.get("clan.created").replace("{clan}", name)));
         } else {
@@ -471,6 +477,10 @@ public class ClanCommand implements CommandExecutor, TabCompleter {
             ok = clanService.pointsDeposit(player.getUniqueId(), amount, economy);
             player.sendMessage(Text.color(ok ? messages.get("clan.points-deposit").replace("{amount}", String.valueOf(amount)) : messages.get("clan.points-fail")));
         } else if (args[1].equalsIgnoreCase("withdraw")) {
+            if (!clanService.canWithdraw(player.getUniqueId())) {
+                player.sendMessage(Text.color("&cOnly the leader and officers can withdraw."));
+                return;
+            }
             ok = clanService.pointsWithdraw(player.getUniqueId(), amount, economy);
             player.sendMessage(Text.color(ok ? messages.get("clan.points-withdraw").replace("{amount}", String.valueOf(amount)) : messages.get("clan.points-fail")));
         }
@@ -750,6 +760,10 @@ public class ClanCommand implements CommandExecutor, TabCompleter {
         }
         double amount;
         try { amount = Double.parseDouble(args[1]); } catch (NumberFormatException ex) { player.sendMessage(Text.color("&cInvalid amount")); return; }
+        if (!clanService.canWithdraw(player.getUniqueId())) {
+            player.sendMessage(Text.color("&cOnly the leader and officers can withdraw."));
+            return;
+        }
         boolean ok = clanService.pointsWithdraw(player.getUniqueId(), amount, economy);
         player.sendMessage(Text.color(ok ? "&aWithdrew &e" + amount + " &apoints." : messages.get("clan.points-fail")));
     }

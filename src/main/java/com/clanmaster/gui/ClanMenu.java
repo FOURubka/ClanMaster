@@ -17,6 +17,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
@@ -333,6 +334,13 @@ public class ClanMenu implements Listener {
         for (int slot : border) {
             inv.setItem(slot, pane);
         }
+    }
+
+    @EventHandler
+    public void onDrag(InventoryDragEvent event) {
+        // All menus are 54-slot inventories held by the player
+        var top = event.getView().getTopInventory();
+        if (top.getSize() == 54 && top.getHolder() instanceof Player) event.setCancelled(true);
     }
 
     @EventHandler
